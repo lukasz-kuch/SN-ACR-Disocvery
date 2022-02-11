@@ -73,7 +73,6 @@ TfSCMPEccQueueProbeUtil.prototype = {
     if (ecc.next()) {
       xmlResponse.parseXML(ecc.payload);
       return xmlResponse.getNodeText('//output');
-    }
     return false;
   },
 
