@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_ui_page">
+    <sys_ui_page action="INSERT_OR_UPDATE">
+        <category>general</category>
+        <client_script><![CDATA[function onLoadFunction(val) {
+    var obj = JSON.parse(val);
+    var table = document.getElementById('table');
+    Object.keys(obj).forEach(function(key) {
+        var row = document.createElement('tr');
+        var ceel_1 = document.createElement('td');
+        var ceel_2 = document.createElement('td');
+        var ceel_3 = document.createElement('td');
+        var ceel_3_link = document.createElement('a');
+        ceel_1.appendChild(document.createTextNode("insert"));
+        ceel_1.setAttribute('id', 'updateType');
+        ceel_2.appendChild(document.createTextNode(key));
+        ceel_3_link.appendChild(document.createTextNode(obj[key]));
+        Object.assign(ceel_3_link, {
+        href: '/'+key+'_list.do',
+          id: 'insertCount'
+        });
+        ceel_3.appendChild(ceel_3_link);
+        row.appendChild(ceel_1);
+        row.appendChild(ceel_2);
+        row.appendChild(ceel_3);
+        table.appendChild(row);
+    });
+}]]></client_script>
+        <description>Response page</description>
+        <direct>false</direct>
+        <endpoint/>
+        <html><![CDATA[<?xml version="1.0" encoding="utf-8" ?>
+<j:jelly trim="false" xmlns:j="jelly:core" xmlns:g="glide" xmlns:j2="null" xmlns:g2="null">
+  <g:evaluate var="sysparm_object" expression="RP.getParameterValue('sysparm_object')" />
+	<script>
+		addLoadEvent( function() {
+			onLoadFunction("${sysparm_object}");
+		});
+	</script>
+	<style>
+		td, th {
+			padding: 5px;
+		}
+		#updateType, #insertCount {
+			color: blue;
+		}
+	</style>
+		<div class="container">
+		<h3>Discovery execution</h3>
+		<table id="table">
+		  <tr>
+			<th>Operation</th>
+			<th>Table</th>
+			<th>Row Count</th>
+		  </tr>
+		</table>
+	  </div>
+</j:jelly>]]></html>
+        <name>cmp_acr_response</name>
+        <processing_script/>
+        <sys_class_name>sys_ui_page</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2022-02-10 14:10:04</sys_created_on>
+        <sys_id>afe5cd96076581149eebf48f7c1ed0c7</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>cmp_acr_response</sys_name>
+        <sys_package display_value="ACR Discovery" source="e6b341d2076581149eebf48f7c1ed0ed">e6b341d2076581149eebf48f7c1ed0ed</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="ACR Discovery">e6b341d2076581149eebf48f7c1ed0ed</sys_scope>
+        <sys_update_name>sys_ui_page_afe5cd96076581149eebf48f7c1ed0c7</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2022-02-10 14:10:04</sys_updated_on>
+    </sys_ui_page>
+</record_update>

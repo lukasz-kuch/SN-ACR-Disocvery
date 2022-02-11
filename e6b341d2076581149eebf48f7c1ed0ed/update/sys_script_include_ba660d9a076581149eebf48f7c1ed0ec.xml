@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>package_private</access>
+        <active>true</active>
+        <api_name>global.CMPACRDiscovery</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description/>
+        <name>CMPACRDiscovery</name>
+        <script><![CDATA[/* eslint-disable consistent-return */
+/* eslint-disable no-undef */
+/* eslint-disable camelcase */
+/* eslint-disable no-unused-expressions */
+/* eslint-disable no-underscore-dangle */
+var TfSCMPACRDiscovery = Class.create();
+TfSCMPACRDiscovery.prototype = {
+  initialize: function (parameters) {
+    this.discoveryStats = {};
+    this.midServer = parameters.midServer;
+    this.serviceAccountSysId = parameters.serviceAccountSysId;
+  },
+  /**
+   * Executing powershell probe to get acr's object data and populate cmdb
+   * @param {string} serviceAccountSysId - service account sys_id
+   * @returns {object} - discovery inserts e.g {"cmdb_ci_cmp_resource": 2, "cmdb_ci_docker_local_image": 4, ...}
+   */
+  execute: function () {
+    var response;
+    var eccUtil = new x_fstfs_fj_cmp.TfSCMPEccQueueProbeUtil();
+    var automation_api = new sn_automation.AutomationAPI();
+    var script =
+      '$null = Set-AzureLoginSession -ClientId $env:SNC_clientId -ClientSecret $env:SNC_clientSecret -TenantId $env:SNC_tenantId\n' +
+      'Get-AzureContainerRegistry | ConvertTo-Json\n';
+
+    var probe = SncProbe.get('Windows - Powershell');
+    var credentials = this._getCredential(this.serviceAccountSysId);
+    probe.setName('Windows - Powershell');
+    probe.setSource('127.0.0.1');
+    probe.addParameter('powershell_param_clientId', credentials.client_id);
+    probe.addParameter(
+      'powershell_param_clientSecret',
+      automation_api.encrypt(credentials.client_secret)
+    );
+    probe.addParameter('powershell_param_tenantId', credentials.tenant_id);
+    probe.addParameter('script.ps1', script);
+    probe.addParameter('skip_sensor', true);
+    probe.create(this.midServer);
+
+    response = eccUtil.awaitEccResponse('Windows - Powershell');
+    this._createRecords(response);
+    return this.discoveryStats;
+  },
+  /**
+   *
+   * @param {string} serviceAccountSysId -  azure service account sys_id
+   * @returns {object} - credential object e.g "{subscription_id:.., client_id:.., }"
+   */
+  _getCredential: function (serviceAccountSysId) {
+    var encrypter = new GlideEncrypter();
+    var grSA = new GlideRecord('cmdb_ci_cloud_service_account');
+    grSA.get(serviceAccountSysId);
+    return {
+      subscription_id: grSA.account_id,
+      client_id: grSA.discovery_credentials.client_id,
+      client_secret: encrypter.decrypt(grSA.discovery_credentials.secret_key),
+      tenant_id: grSA.discovery_credentials.tenant_id
+    };
+  },
+  /**
+   *
+   * @param {array} response - array of acr objects
+   */
+  _createRecords: function (response) {
+    response.forEach(function (registryObj) {
+      var acrSysId = this._createACR(registryObj);
+      if (registryObj.credential) this._createACRCredentials(registryObj, acrSysId);
+      if (!registryObj.repositories) return;
+      Array.isArray(registryObj.repositories)
+        ? registryObj.repositories.forEach(this._createRepos, [registryObj.loginServer, acrSysId])
+        : this._createRepo(registryObj.repositories, [registryObj.loginServer, acrSysId]);
+    }, this);
+  },
+
+  /**
+   *
+   * @param {object} registry - ACR returned from PS script
+   * @returns {object} - Glide Record object of 'cmdb_ci_cmp_resource' table
+   */
+  _createACR: function (registry) {
+    var resourceGroupSysId = this._getResourceGroupSysIdByLDC(
+      registry.resourceGroup,
+      registry.location
+    );
+    var acrGR = new GlideRecord('cmdb_ci_cmp_resource');
+    acrGR.addQuery('object_id', registry.id);
+    acrGR.query();
+    if (acrGR.next()) return acrGR.sys_id;
+    acrGR.initialize();
+    acrGR.name = registry.name;
+    acrGR.object_id = registry.id;
+    acrGR.resource_type = 'Microsoft.ContainerRegistry';
+    acrGR.category = 'SKU: ' + registry.sku.tier;
+    acrGR.state = 'available';
+    acrGR.insert();
+    this._countInserts('cmdb_ci_cmp_resource');
+    this._createRelation(resourceGroupSysId, acrGR.sys_id, 'Contains::Contained by');
+    this._createRelation(acrGR.sys_id, this._gtLDCSysId(this.serviceAccountSysId, registry.location), 'Hosted on::Hosts');
+    return acrGR.sys_id;
+  },
+  /**
+   *
+   * @param {object} repository - repository object from discovered registry object
+   * @param {array} additionalParams - list of additional parameters e.g [loginServer, registrySysId]
+   * @returns
+   */
+  _createRepo: function (repository, additionalParams) {
+    var params = additionalParams || this;
+    var loginServer = params[0];
+    var registrySysId = params[1];
+    var description = 'Registry login server: ' + loginServer;
+    var imageGR = new GlideRecord('cmdb_ci_docker_local_image');
+    imageGR.addQuery('image_id', repository.name);
+    imageGR.addQuery('short_description', description);
+    imageGR.query();
+    if (imageGR.next()) return;
+    imageGR.initialize();
+    imageGR.name = repository.name;
+    imageGR.image_id = repository.name;
+    imageGR.short_description = description;
+    imageGR.insert();
+    this._countInserts('cmdb_ci_docker_local_image');
+    this._createRelation(registrySysId, imageGR.sys_id, 'Contains::Contained by');
+    repository.tags.split(' ').forEach(function (tag) {
+      this._createRepoTags(tag, loginServer, repository.name, imageGR.sys_id);
+    }, this);
+  },
+  /**
+   *
+   * @param {object} tag - Repository's Tag returned from PS script
+   * @param {object} registry - ACR returned from PS script
+   * @param {object} repository - Repository returned from PS script
+   */
+  _createRepoTags: function (tag, loginServer, repositoryName, imageSysId) {
+    var repoTagGR = new GlideRecord('cmdb_ci_docker_image_tag');
+    repoTagGR.addQuery('name', tag);
+    repoTagGR.addQuery('repository', loginServer);
+    repoTagGR.query();
+    if (repoTagGR.next()) return;
+    repoTagGR.initialize();
+    repoTagGR.name = tag;
+    repoTagGR.tag = tag;
+    repoTagGR.image_id = repositoryName;
+    repoTagGR.repository = loginServer;
+    repoTagGR.insert();
+    this._countInserts('cmdb_ci_docker_image_tag');
+    this._createRelation(imageSysId, repoTagGR.sys_id, 'Contains::Contained by');
+  },
+  /**
+   *
+   * @param {object} registry - registry object from discovery data
+   * @param {string} acrSysID - container registry sys_id
+   */
+  _createACRCredentials: function (registry, acrSysID) {
+    var credentialsGR = new GlideRecord('basic_auth_credentials');
+    credentialsGR.addQuery('name', registry.loginServer);
+    credentialsGR.query();
+    if (credentialsGR.next()) return;
+    credentialsGR.initialize();
+    credentialsGR.name = registry.loginServer;
+    credentialsGR.user_name = registry.credential.username;
+    credentialsGR.password = registry.credential.password;
+    credentialsGR.insert();
+    this._countInserts('basic_auth_credentials');
+    this._createM2MCredsRelation(credentialsGR.sys_id, acrSysID);
+  },
+  /**
+   *
+   * @param {object} registry - ACR returned from PS script
+   * @param {string} location - location name
+   * @returns {object} - Resource Group object
+   */
+  _getResourceGroupSysIdByLDC: function (resourceGroup, location) {
+    var locationSysId = this._gtLDCSysId(this.serviceAccountSysId, location);
+    var relGR = new GlideRecord('cmdb_rel_ci');
+    relGR.addQuery('parent', locationSysId);
+    relGR.addQuery('child.name', resourceGroup);
+    relGR.query();
+    if (relGR.next()) return relGR.child;
+  },
+  /**
+   *
+   * @param {string} credentialSysID - registry credential sys_id
+   * @param {string} registrySysID - container registry sys_id
+   */
+  _createM2MCredsRelation: function (credentialSysID, registrySysID) {
+    var credsRelGR = new GlideRecord('x_fstfs_fj_cmp_m2m_basic_auth_c_cloud_resour');
+    credsRelGR.initialize();
+    credsRelGR.basic_auth_credentials = credentialSysID;
+    credsRelGR.cloud_resource = registrySysID;
+    credsRelGR.insert();
+    this._countInserts('x_fstfs_fj_cmp_m2m_basic_auth_c_cloud_resour');
+  },
+  /**
+   *
+   * @param {string} parentSysId - sys_id of parent record
+   * @param {sting} parentSysId - sys_id of child record
+   * @param {string} relType - reletion type name e.g 'Contains::Contained by'
+   */
+  _createRelation: function (parentSysId, childSysId, relType) {
+    var relGR = new GlideRecord('cmdb_rel_ci');
+    relGR.initialize();
+    relGR.parent = parentSysId;
+    relGR.child = childSysId;
+    relGR.type = this._gerRelTypeSysId(relType);
+    relGR.insert();
+    this._countInserts('cmdb_rel_ci');
+  },
+  /**
+   *
+   * @param {string} relation - e.g 'Contains::Contained by'
+   * @returns {string} - relation sys_id
+   */
+  _gerRelTypeSysId: function (relation) {
+    var relType = relation.split('::');
+    var relTypeGR = new GlideRecord('cmdb_rel_type');
+    relTypeGR.addQuery('parent_descriptor', relType[0]);
+    relTypeGR.addQuery('child_descriptor', relType[1]);
+    relTypeGR.query();
+    relTypeGR.next();
+    return relTypeGR.sys_id;
+  },
+  /**
+   *
+   * @param {string} ldc - location object_id e.g "westeurope"
+   * @param {string} SASysId - service account sys_id
+   * @returns {string} - location sys_id
+   */
+  _gtLDCSysId: function (SASysId, ldc) {
+    var ldcGR = new GlideRecord('cmdb_rel_ci');
+    ldcGR.addQuery('child', SASysId);
+    ldcGR.addQuery('parent.sys_class_name', 'cmdb_ci_azure_datacenter');
+    ldcGR.query();
+    while(ldcGR.next()) {
+      if(ldcGR.parent.region.toString() === ldc) return ldcGR.parent.sys_id;
+    }
+  },
+  /**
+   *
+   * @param {string} tableName - table name with newly inserted record
+   * @returns {object} - discovery inserts e.g {"cmdb_ci_cmp_resource": 2, "cmdb_ci_docker_local_image": 4, ...}
+   */
+  _countInserts: function (tableName) {
+    if (tableName in this.discoveryStats) {
+      this.discoveryStats[tableName]++;
+      return;
+    }
+    this.discoveryStats[tableName] = 1;
+  },
+
+  type: 'TfSCMPACRDiscovery'
+};
+]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2022-02-10 14:12:05</sys_created_on>
+        <sys_id>ba660d9a076581149eebf48f7c1ed0ec</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>CMPACRDiscovery</sys_name>
+        <sys_package display_value="ACR Discovery" source="e6b341d2076581149eebf48f7c1ed0ed">e6b341d2076581149eebf48f7c1ed0ed</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="ACR Discovery">e6b341d2076581149eebf48f7c1ed0ed</sys_scope>
+        <sys_update_name>sys_script_include_ba660d9a076581149eebf48f7c1ed0ec</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2022-02-10 14:12:05</sys_updated_on>
+    </sys_script_include>
+</record_update>
