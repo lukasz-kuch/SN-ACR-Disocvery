@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>package_private</access>
+        <active>true</active>
+        <api_name>global.CMPEccQueueProbeUtil</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description/>
+        <name>CMPEccQueueProbeUtil</name>
+        <script><![CDATA[var TfSCMPEccQueueProbeUtil = Class.create();
+TfSCMPEccQueueProbeUtil.prototype = {
+  initialize: function () {},
+
+  /**
+   *
+   * @param {string} ms - milliseconds to sleep
+   */
+  sleep: function (ms) {
+    var unixtime_ms = new Date().getTime();
+    while (new Date().getTime() < unixtime_ms + ms) {
+      //wait
+    }
+  },
+
+  /**
+   *
+   * @param {string} password - password, secret key to encrypt
+   * @returns {string } - encrypted string
+   */
+  encrypter: function (password) {
+    var automation_api = new sn_automation.AutomationAPI();
+    if (automation_api.isEncrypted(password)) return password;
+    return automation_api.encrypt(password);
+  },
+
+  /**
+   *
+   * @param {string} probeName - ecc queue probe name
+   * @returns {object} - response from xml payload "//output" node
+   */
+  awaitEccResponse: function (probeName) {
+    var res;
+    var currentTime = new GlideDateTime().getDisplayValue();
+    while (!this.getXMLResponse(probeName, currentTime)) {
+      this.sleep(500);
+    }
+    res = this.getXMLResponse(probeName, currentTime);
+    return JSON.parse(res);
+  },
+
+  /**
+   *
+   * @param {string} name - ecc queue probe name
+   * @param {string} currentDate - current time e.g "2021-09-03 08:55:01"
+   * @returns {json} - if true it returns response from xml payload "//output" node, otherwise false
+   */
+  getXMLResponse: function (name, currentDate) {
+    var xmlResponse = new XMLDocument2();
+    var date = currentDate.split(' ');
+    var ecc = new GlideRecord('ecc_queue');
+    ecc.orderByDesc('sys_created_on');
+    ecc.addEncodedQuery(
+      'sys_created_on>javascript:gs.dateGenerate("' +
+        date[0] +
+        '", "' +
+        date[1] +
+        '")'
+    );
+    ecc.addQuery('name', name);
+    ecc.addQuery('queue', 'input');
+    ecc.addQuery('state', 'ready');
+    ecc.query();
+    if (ecc.next()) {
+      xmlResponse.parseXML(ecc.payload);
+      return xmlResponse.getNodeText('//output');
+    } else {
+      return false;
+    }
+  },
+
+  type: 'TfSCMPEccQueueProbeUtil'
+};
+]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2022-02-10 14:12:42</sys_created_on>
+        <sys_id>84b649da076581149eebf48f7c1ed013</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>CMPEccQueueProbeUtil</sys_name>
+        <sys_package display_value="ACR Discovery" source="e6b341d2076581149eebf48f7c1ed0ed">e6b341d2076581149eebf48f7c1ed0ed</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="ACR Discovery">e6b341d2076581149eebf48f7c1ed0ed</sys_scope>
+        <sys_update_name>sys_script_include_84b649da076581149eebf48f7c1ed013</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2022-02-10 14:12:42</sys_updated_on>
+    </sys_script_include>
+</record_update>

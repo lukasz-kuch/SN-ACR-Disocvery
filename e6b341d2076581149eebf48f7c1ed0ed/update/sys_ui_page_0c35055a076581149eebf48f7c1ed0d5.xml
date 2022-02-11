@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_ui_page">
+    <sys_ui_page action="INSERT_OR_UPDATE">
+        <category>general</category>
+        <client_script><![CDATA[function setTimerDelay() {
+	document.getElementById("save_button").disabled = "true";
+	var waitDiv = document.getElementById('wait');
+    var waitText = document.createElement('h4');
+    var spinner = document.createElement('div');
+    waitText.appendChild(document.createTextNode("Please wait, dicovery is running..."));
+	spinner.setAttribute('class', 'loader');
+    waitDiv.appendChild(waitText);
+    waitDiv.appendChild(spinner);
+}
+
+function onClick() {
+	setTimeout(setTimerDelay,1000);
+}]]></client_script>
+        <description>Main page for acr discovery</description>
+        <direct>false</direct>
+        <endpoint/>
+        <html><![CDATA[<?xml version="1.0" encoding="utf-8" ?>
+<j:jelly trim="false" xmlns:j="jelly:core" xmlns:g="glide" xmlns:j2="null" xmlns:g2="null">
+	<g:ui_form>
+  <nav class="navbar navbar-default" role="navigation">
+    <div class="container-fluid">
+      <div class="navbar-header">
+        <h1 style="display: inline-block;" class="form-header navbar-title">
+          <span>${gs.getMessage('MCSS CMP ACR Discovery')}</span>
+        </h1>
+      </div>
+    </div>
+  </nav>
+  <style>
+	.loader {
+	  position: absolute;
+	  margin: auto;
+      top:0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+	  border: 16px solid #f3f3f3;
+	  border-radius: 50%;
+	  border-top: 16px solid #3498db;
+	  width: 100px;
+	  height: 100px;
+	  -webkit-animation: spin 2s linear infinite; /* Safari */
+	  animation: spin 2s linear infinite;
+	}
+
+	@keyframes spin {
+	  0% { transform: rotate(0deg); }
+	  100% { transform: rotate(360deg); }
+	}
+    select {
+      width: auto;
+    }
+    .container {
+      margin-left: -10px;
+    }
+    #save_button {
+      margin-top: 10px;
+	  margin-left: 2px;
+    }
+    #my_domain {
+      margin-left: 25px;
+    }
+	#waitText, label {
+	  padding: 10px;
+	  font-family: "Times New Roman", Times, serif;
+	}
+    h4 {
+		text-align: center;
+	}
+  </style>
+  <g2:evaluate>
+    var rec = new GlideRecord('cmdb_ci_cloud_service_account');
+    rec.query();
+    var recList = [];
+    while(rec.next()) {
+    recList.push({
+    label: rec.name.getDisplayValue(),
+    value: rec.sys_id.toString()
+    });
+    }
+	var currentSessionDomain = gs.getSession().getCurrentDomainID();
+	var allMids = [];
+	var midGr = new GlideRecord('ecc_agent');
+	midGr.addQuery('sys_domain', currentSessionDomain);
+	midGr.query();
+	if(midGr.next()) {
+		allMids.push({
+		name: midGr.name.toString(),
+		sys_id: midGr.sys_id.toString()
+	  })
+	};
+	var availableMids = [];
+
+	function getAvailableMid(mid) {
+		var midCap = new GlideRecord('ecc_agent_capability_m2m');
+		midCap.addQuery('agent', mid.sys_id);
+		midCap.addQuery('capability', '427709a60a0006bc7d2904e99132532d');
+		midCap.query();
+		if(midCap.next()) {
+			availableMids.push(mid.name);
+		}
+	}
+	allMids.forEach(getAvailableMid);
+	var data = availableMids.length + "/" + allMids.length
+  </g2:evaluate>
+  <div id="container" class="container">
+    <label>${gs.getMessage('Customer Service Account')}:$[SP]</label>
+    <select class="form-control" name="serviceAccount_id" id="serviceAccount_id">
+      <j2:forEach var="jvar_choice" items="$[recList]">
+        <option value="$[jvar_choice.value]">$[jvar_choice.label]</option>
+      </j2:forEach>
+    </select>
+	<label>${gs.getMessage('Available MID Servers ')}:$[data]</label>
+    <select class="form-control" name="midserver" id="midserver">
+      <j2:forEach var="jvar_mid" items="$[availableMids]">
+        <option value="$[jvar_mid]">$[jvar_mid]</option>
+      </j2:forEach>
+    </select>
+    <g:dialog_button
+				id="save_button"
+				style_class="btn btn-primary"
+				onclick="onClick()">
+				${gs.getMessage('Run ACR Discovery')}
+			</g:dialog_button>
+  </div>
+  <div id="wait">
+	</div>
+	</g:ui_form>
+</j:jelly>]]></html>
+        <name>cmp_acr_discovery</name>
+        <processing_script><![CDATA[var params = {
+	serviceAccountSysId: serviceAccount_id,
+	midServer: midserver
+};
+var util = new global.TfSCMPACRDiscovery(params);
+var res = JSON.stringify(util.execute());
+response.sendRedirect('x_fstfs_fj_cmp_mcss_response.do?sysparm_object='+ res);]]></processing_script>
+        <sys_class_name>sys_ui_page</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2022-02-10 14:08:54</sys_created_on>
+        <sys_id>0c35055a076581149eebf48f7c1ed0d5</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>cmp_acr_discovery</sys_name>
+        <sys_package display_value="ACR Discovery" source="e6b341d2076581149eebf48f7c1ed0ed">e6b341d2076581149eebf48f7c1ed0ed</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="ACR Discovery">e6b341d2076581149eebf48f7c1ed0ed</sys_scope>
+        <sys_update_name>sys_ui_page_0c35055a076581149eebf48f7c1ed0d5</sys_update_name>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2022-02-10 14:08:54</sys_updated_on>
+    </sys_ui_page>
+</record_update>
