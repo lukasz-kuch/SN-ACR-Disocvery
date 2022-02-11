@@ -16,9 +16,9 @@ TfSCMPEccQueueProbeUtil.prototype = {
    * @param {string} ms - milliseconds to sleep
    */
   sleep: function (ms) {
-    var unixtime_ms = new Date().getTime();
-    while (new Date().getTime() < unixtime_ms + ms) {
-      //wait
+    var unixTime_ms = new Date().getTime();
+    while (new Date().getTime() < unixTime_ms + ms) {
+      // wait
     }
   },
 
@@ -73,9 +73,8 @@ TfSCMPEccQueueProbeUtil.prototype = {
     if (ecc.next()) {
       xmlResponse.parseXML(ecc.payload);
       return xmlResponse.getNodeText('//output');
-    } else {
-      return false;
     }
+    return false;
   },
 
   type: 'TfSCMPEccQueueProbeUtil'
@@ -85,13 +84,13 @@ TfSCMPEccQueueProbeUtil.prototype = {
         <sys_created_by>admin</sys_created_by>
         <sys_created_on>2022-02-10 14:12:42</sys_created_on>
         <sys_id>84b649da076581149eebf48f7c1ed013</sys_id>
-        <sys_mod_count>0</sys_mod_count>
+        <sys_mod_count>2</sys_mod_count>
         <sys_name>CMPEccQueueProbeUtil</sys_name>
         <sys_package display_value="ACR Discovery" source="e6b341d2076581149eebf48f7c1ed0ed">e6b341d2076581149eebf48f7c1ed0ed</sys_package>
         <sys_policy/>
         <sys_scope display_value="ACR Discovery">e6b341d2076581149eebf48f7c1ed0ed</sys_scope>
         <sys_update_name>sys_script_include_84b649da076581149eebf48f7c1ed013</sys_update_name>
         <sys_updated_by>admin</sys_updated_by>
-        <sys_updated_on>2022-02-10 14:12:42</sys_updated_on>
+        <sys_updated_on>2022-02-11 13:57:06</sys_updated_on>
     </sys_script_include>
 </record_update>
